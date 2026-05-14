@@ -1,5 +1,7 @@
 import os
 import csv
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from yt_dlp import YoutubeDL
 import spotipy
@@ -72,10 +74,13 @@ def already_downloaded(artist: str, album: str, track_number: int, track_name: s
     return file_path.exists()
 
 
+csv_lock = threading.Lock()
+
 def save_to_csv(artist: str, album: str, track_name: str, track_number: int):
-    with open(SONGS_TRACKER, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([artist, album, track_name, track_number])
+    with csv_lock:
+        with open(SONGS_TRACKER, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([artist, album, track_name, track_number])
 
 
 def download_song(track_name: str, artist: str, album: str, track_number: int):
@@ -119,22 +124,40 @@ def download_song(track_name: str, artist: str, album: str, track_number: int):
 # Main
 # -------------------------
 
+MAX_WORKERS = 8
+
+
+def process_song(track_name: str, artist: str, album: str, track_number: int):
+    """Download a single song and log it. Designed to run in a thread."""
+    if already_downloaded(artist, album, track_number, track_name):
+        print(f"Skipping (already exists): {track_number:02d} - {track_name} - {artist}")
+        return
+
+    print(f"Downloading: {track_number:02d} - {track_name} - {artist}")
+    download_song(track_name, artist, album, track_number)
+    save_to_csv(artist, album, track_name, track_number)
+
+
 def main():
     liked_songs = get_liked_songs()
     print(f"\nFound {len(liked_songs)} liked songs.\n")
 
-    for track_name, artist, album, track_number in liked_songs:
-        try:
-            if already_downloaded(artist, album, track_number, track_name):
-                print(f"Skipping (already exists): {track_number:02d} - {track_name} - {artist}")
-                continue
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(process_song, track_name, artist, album, track_number): (  # type: ignore[arg-type]
+                track_name, artist, track_number
+            )
+            for track_name, artist, album, track_number in liked_songs
+        }
 
-            print(f"Downloading: {track_number:02d} - {track_name} - {artist}")
-            download_song(track_name, artist, album, track_number)
-            save_to_csv(artist, album, track_name, track_number)
+        for future in as_completed(futures):
+            track_name, artist, track_number = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Failed: {track_number:02d} - {track_name} - {artist} -> {e}")
 
-        except Exception as e:
-            print(f"Failed: {track_number:02d} - {track_name} - {artist} -> {e}")
+    print("\nAll downloads complete.")
 
 
 if __name__ == "__main__":
