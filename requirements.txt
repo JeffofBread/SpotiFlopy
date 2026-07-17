@@ -1,3 +1,6 @@
 spotipy
 yt-dlp
+yt-dlp-ejs
 python-dotenv
+mutagen
+requests
