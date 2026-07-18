@@ -8,14 +8,12 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TRCK, TDRC, ID3NoHeaderError
 
-# -------------------------
-# Logging (thread-safe, avoids interleaved prints)
-# -------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(threadName)s] %(message)s",
@@ -23,9 +21,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("spotify_downloader")
 
-# -------------------------
-# Spotify Auth
-# -------------------------
 scope = "user-library-read"
 
 load_dotenv()
@@ -36,13 +31,9 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope=scope
 ))
 
-# -------------------------
-# Paths
-# -------------------------
 BASE_PATH = Path(os.path.dirname(os.path.abspath(__file__))) / "Songs"
 BASE_PATH.mkdir(parents=True, exist_ok=True)
 DENO_PATH = os.getenv("DENO_PATH")
-
 if not DENO_PATH:
     raise EnvironmentError(
         "DENO_PATH is not set. Add it to your .env file\n"
@@ -52,12 +43,8 @@ SONGS_TRACKER = BASE_PATH / "songs.csv"
 if not SONGS_TRACKER.exists():
     with open(SONGS_TRACKER, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["Artist", "Album", "Track", "Track Number"])  # header
+        writer.writerow(["Artist", "Album", "Track", "Track Number"])
 
-
-# -------------------------
-# Helpers
-# -------------------------
 
 def sanitize(text: str) -> str:
     cleaned = "".join(c for c in text if c not in r'\/:*?"<>|').strip()
@@ -72,7 +59,6 @@ def search_youtube(query: str) -> str:
         "remote_components": {"ejs:github"},
     }) as ydl:
         info = ydl.extract_info(f"ytsearch1:{query}", download=False)
-        # FIX: info["entries"] can be None (not just empty) on a failed search.
         entries = info.get("entries") or []
         if not entries:
             raise ValueError(f"No results for {query}")
@@ -136,6 +122,8 @@ def download_song(track_name: str, artist: str, album: str, track_number: int,
         "js_runtimes": {"deno": {"path": DENO_PATH}},
         "remote_components": {"ejs:github"},
         "file_access_retries": 10,
+        "sleep_interval": 1,
+        "max_sleep_interval": 4,
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -151,8 +139,21 @@ def download_song(track_name: str, artist: str, album: str, track_number: int,
         "ffmpeg_postprocessor_args": ["-af", "loudnorm"],
     }
 
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl.download([youtube_url])
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.download([youtube_url])
+            break
+        except DownloadError:
+            if attempt == max_attempts:
+                raise
+            backoff = 5 * (2 ** (attempt - 1))
+            log.warning(
+                f"Download failed for {track_name} - {artist} (attempt {attempt}/{max_attempts}). "
+                f"Retrying in {backoff}s..."
+            )
+            time.sleep(backoff)
 
     mp3_file = album_folder / f"{track_number:02d} - {sanitize(track_name)}.mp3"
 
@@ -190,10 +191,6 @@ def write_metadata(filename: Path, title: str, artist: str, album: str, track_nu
 
     tags.save(filename)
 
-
-# -------------------------
-# Main
-# -------------------------
 
 MAX_WORKERS = 3
 stop_event = threading.Event()
