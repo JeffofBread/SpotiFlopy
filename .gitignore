@@ -17,16 +17,10 @@ __pycache__/
 liked_songs_cache.json
 
 # -------------------------
-# CSV tracker
-# -------------------------
-songs.csv
-
-# -------------------------
 # Temporary FFmpeg scripts
 # -------------------------
-FFmpegAudioConvertPP
-FFmpegAudioConvertPPails
-FFmpegNormalizePP
+FFmpegAudioConvertPP*
+FFmpegNormalizePP*
 
 # -------------------------
 # Python virtual environment
@@ -36,9 +30,24 @@ env/
 .venv/
 
 # -------------------------
+# Editor / IDE
+# -------------------------
+.vscode/
+.idea/
+
+# -------------------------
 # OS-specific files
 # -------------------------
 .DS_Store
 Thumbs.db
+desktop.ini
 
+# -------------------------
+# Logs
+# -------------------------
+*.log
+
+# -------------------------
+# Downloaded songs (includes songs.csv)
+# -------------------------
 Songs/
