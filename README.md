@@ -130,6 +130,7 @@ This fork started from the original SpotiFlopy concept and was substantially rew
 - **Generalized the JS runtime configuration** (Deno/Node/Bun, configurable path) instead of hardcoding Deno.
 - **Added optional browser-cookie support** to help with YouTube rate limiting.
 - **Reorganized file output** under a `Songs/` subfolder, and added `--refresh` and `--verbose` flags for more control over runtime behavior.
+- **Collaboration songs** are now filed under the primary artist's folder instead of creating a separate folder per unique artist combination.
 
 ---
 

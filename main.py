@@ -281,6 +281,7 @@ def get_liked_songs():
             songs.append({
                 "title": track["name"],
                 "artist": ", ".join(a["name"] for a in track["artists"]),
+                "primary_artist": track["artists"][0]["name"],
                 "album": track["album"]["name"],
                 "track_number": track["track_number"],
                 "release_date": track["album"]["release_date"],
@@ -319,8 +320,8 @@ def save_liked_songs_cache(songs):
         log.warning(f"Could not write liked songs cache: {e}")
 
 
-def already_downloaded(artist: str, album: str, track_number: int, track_name: str) -> bool:
-    file_path = BASE_PATH / sanitize(artist) / sanitize(album) / f"{track_number:02d} - {sanitize(track_name)}.mp3"
+def already_downloaded(folder_artist: str, album: str, track_number: int, track_name: str) -> bool:
+    file_path = BASE_PATH / sanitize(folder_artist) / sanitize(album) / f"{track_number:02d} - {sanitize(track_name)}.mp3"
     return file_path.exists()
 
 
@@ -348,11 +349,11 @@ def search_youtube(query: str) -> str:
 
 
 def download_song(track_name: str, artist: str, album: str, track_number: int,
-                  total_tracks: int, release_date: str, cover_url: str):
+                  total_tracks: int, release_date: str, cover_url: str, folder_artist: str):
     query = f"{track_name} {artist} official audio"
     youtube_url = search_youtube(query)
 
-    artist_folder = BASE_PATH / sanitize(artist)
+    artist_folder = BASE_PATH / sanitize(folder_artist)
     album_folder = artist_folder / sanitize(album)
     album_folder.mkdir(parents=True, exist_ok=True)
 
@@ -453,6 +454,7 @@ def listen_for_quit():
 
 def process_song(song: dict):
     artist = song["artist"]
+    folder_artist = song.get("primary_artist") or artist.split(",")[0].strip()
     album = song["album"]
     track_name = song["title"]
     track_number = song["track_number"]
@@ -464,7 +466,7 @@ def process_song(song: dict):
         skipped_count.increment()
         return
 
-    if already_downloaded(artist, album, track_number, track_name):
+    if already_downloaded(folder_artist, album, track_number, track_name):
         log.info(f"Skipping (already exists): \"{track_name}\" by \"{artist}\"")
         skipped_count.increment()
         return
@@ -477,7 +479,7 @@ def process_song(song: dict):
 
         log.info(f"Downloading: \"{track_name}\" by \"{artist}\"")
         start_time = time.time()
-        download_song(track_name, artist, album, track_number, total_tracks, release_date, cover_url)
+        download_song(track_name, artist, album, track_number, total_tracks, release_date, cover_url, folder_artist)
         save_to_csv(artist, album, track_name, track_number)
         download_durations.add(time.time() - start_time)
         succeeded_count.increment()
@@ -498,7 +500,10 @@ def main():
 
     total_to_download = sum(
         1 for s in liked_songs
-        if not already_downloaded(s["artist"], s["album"], s["track_number"], s["title"])
+        if not already_downloaded(
+            s.get("primary_artist") or s["artist"].split(",")[0].strip(),
+            s["album"], s["track_number"], s["title"],
+        )
     )
 
     log.info(f"Found {len(liked_songs)} liked songs ({total_to_download} to download).")
