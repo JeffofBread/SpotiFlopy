@@ -14,6 +14,7 @@ __pycache__/
 *.pyd
 .cache/
 *.cache
+liked_songs_cache.json
 
 # -------------------------
 # CSV tracker
@@ -40,4 +41,4 @@ env/
 .DS_Store
 Thumbs.db
 
-SpotiFlopy/
+Songs/
